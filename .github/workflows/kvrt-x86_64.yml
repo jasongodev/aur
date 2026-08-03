@@ -1,0 +1,145 @@
+name: Update AUR Package
+
+on:
+  #schedule:
+  #  - cron: '0 * * * *' # Every hour
+  workflow_dispatch:
+
+jobs:
+  update-aur:
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:base-devel
+
+    steps:
+      - name: Install dependencies
+        run: |
+          pacman -Syu --noconfirm git devtools openssh pacman-contrib gnupg sudo
+
+      # Fix: Create unprivileged user early and set workspace permissions
+      - name: Setup Build User
+        run: |
+          useradd -m builder
+          echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+
+      # Fix: Extract exact package name by stripping `@...` refs properly
+      - name: Determine Package Name
+        id: pkg
+        env:
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+        run: |
+          # Extract filename from path (e.g., .github/workflows/my-pkg.yml@refs/heads/main -> my-pkg.yml@refs/heads/main)
+          RAW_FILE="${WORKFLOW_REF##*/}"
+          # Strip the @git-ref portion
+          FILENAME="${RAW_FILE%%@*}"
+          # Strip extension
+          PKG_NAME="${FILENAME%.*}"
+          
+          echo "name=$PKG_NAME" >> "$GITHUB_OUTPUT"
+          echo "Target AUR Package Name: $PKG_NAME"
+
+      - name: Checkout AUR Repository
+        run: |
+          git clone "https://aur.archlinux.org/${{ steps.pkg.outputs.name }}.git" .
+
+      - name: Run version upgrade
+        run: |
+          # Grant builder user ownership of workspace
+          chown -R builder:builder .
+          
+          # Run package updates as builder user
+          sudo -u builder pkgctl version upgrade
+          sudo -u builder makepkg --printsrcinfo > .SRCINFO
+
+      - name: Check for changes
+        id: git_check
+        run: |
+          if [[ -n $(git status --porcelain PKGBUILD .SRCINFO) ]]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Changes detected in PKGBUILD or .SRCINFO."
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No version update found."
+          fi
+
+      - name: Configure SSH Keys
+        if: steps.git_check.outputs.changed == 'true'
+        env:
+          GIT_SSH_PRIVATE_KEY: ${{ secrets.GIT_SSH_PRIVATE_KEY }}
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+
+          echo "$AUR_SSH_PRIVATE_KEY" > ~/.ssh/aur
+          echo "$GIT_SSH_PRIVATE_KEY" > ~/.ssh/git
+          chmod 600 ~/.ssh/{aur,git}
+          
+          ssh-keyscan -t rsa,ed25519 github.com aur.archlinux.org >> ~/.ssh/known_hosts 2>/dev/null
+          
+          cat << 'EOF' > ~/.ssh/config
+          Host github.com
+            IdentityFile ~/.ssh/git
+            User git
+
+          Host aur.archlinux.org
+            IdentityFile ~/.ssh/aur
+            User aur
+          EOF
+          chmod 600 ~/.ssh/config
+
+      - name: Configure GPG Key & Git Identity
+        if: steps.git_check.outputs.changed == 'true'
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GIT_USER_NAME: ${{ secrets.GIT_USER_NAME }}
+          GIT_USER_EMAIL: ${{ secrets.GIT_USER_EMAIL }}
+        run: |
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --no-tty --yes --import
+
+          KEY_ID=$(gpg --list-secret-keys --keyid-format LONG | grep -E 'sec' | head -n 1 | awk '{print $2}' | cut -d'/' -f2) 
+
+          git config --global user.name "$GIT_USER_NAME"
+          git config --global user.email "$GIT_USER_EMAIL"
+          git config --global user.signingkey "$KEY_ID"
+          git config --global commit.gpgsign true
+          git config --global gpg.program gpg
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Commit, Push to AUR & Sync to GitHub
+        if: steps.git_check.outputs.changed == 'true'
+        run: |
+          # Detect active branch name (master or main)
+          BRANCH=$(git branch --show-current)
+          
+          # Parse resolved version from .SRCINFO
+          PKGVER=$(grep -E '^\s*pkgver =' .SRCINFO | awk '{print $3}')
+          PKGREL=$(grep -E '^\s*pkgrel =' .SRCINFO | awk '{print $3}')
+          FULL_VER="${PKGVER}-${PKGREL}"
+
+          git add PKGBUILD .SRCINFO
+          git commit -m "chore(release): auto-upgrade to version $FULL_VER"
+          
+          # Push to AUR and verify success
+          echo "::group::Pushing to AUR..."
+          if git push origin "$BRANCH" --dry-run; then
+            echo "Successfully pushed update to AUR."
+            echo "::endgroup::"
+          else
+            echo "::error::Failed to push changes to AUR! Aborting GitHub sync."
+            echo "::endgroup::"
+            exit 1
+          fi
+
+          # Push to GitHub mirror only after AUR push succeeds
+          echo "::group::Syncing to GitHub mirror..."
+          git remote add github "git@github.com:jasongodev/aur-${{ steps.pkg.outputs.name }}.git"
+          
+          if git push github "$BRANCH" --dry-run; then
+            echo "Successfully synced changes to GitHub mirror."
+            echo "::endgroup::"
+          else
+            echo "::error::Pushed to AUR successfully, but failed to sync to GitHub mirror."
+            echo "::endgroup::"
+            exit 1
+          fi
