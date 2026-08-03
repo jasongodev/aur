@@ -24,6 +24,7 @@ jobs:
           useradd -m builder
           echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
           chown -R builder:builder "$GITHUB_WORKSPACE"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       # Fix: Extract exact package name by stripping `@...` refs properly
       - name: Determine Package Name
@@ -105,7 +106,6 @@ jobs:
           git config --global user.signingkey "$KEY_ID"
           git config --global commit.gpgsign true
           git config --global gpg.program gpg
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Commit, Push to AUR & Sync to GitHub
         if: steps.git_check.outputs.changed == 'true'
