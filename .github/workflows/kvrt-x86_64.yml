@@ -25,20 +25,31 @@ jobs:
           chown -R builder:builder "$GITHUB_WORKSPACE"
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
-      - name: Set up SSH Keys
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: |
-            ${{ secrets.GIT_SSH_PRIVATE_KEY }}
-            ${{ secrets.AUR_SSH_PRIVATE_KEY }}
-
-      - name: Add known_hosts
+      - name: Configure SSH Keys
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          GIT_SSH_PRIVATE_KEY: ${{ secrets.GIT_SSH_PRIVATE_KEY }}
         run: |
-          ssh-keyscan -t rsa,ed25519 github.com aur.archlinux.org >> ~/.ssh/known_hosts
-          chmod 644 ~/.ssh/known_hosts
+          mkdir -p /root/.ssh
 
-      - name: Test GitHub Connection
-        run: ssh -v -T git@github.com || true
+          echo "$AUR_SSH_PRIVATE_KEY" > /root/.ssh/aur
+          echo "$GIT_SSH_PRIVATE_KEY" > /root/.ssh/git
+          chmod 600 /root/.ssh/aur
+          chmod 600 /root/.ssh/git
+          
+          ssh-keyscan -t rsa,ed25519 github.com aur.archlinux.org >> /root/.ssh/known_hosts 2>/dev/null
+          
+          cat << 'EOF' > /root/.ssh/config
+          Host github.com
+            IdentityFile /root/.ssh/git
+            User git
+
+          Host aur.archlinux.org
+            IdentityFile /root/.ssh/aur
+            User aur
+          EOF
+          chmod 600 /root/.ssh/config
+          ssh -T git@github.com
 
       - name: Determine Package Name
         id: pkg
