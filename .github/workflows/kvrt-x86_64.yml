@@ -64,7 +64,7 @@ jobs:
 
       - name: Checkout AUR Repository
         run: |
-          git clone "ssh://git@github.com:jasongodev/aur-${{ steps.pkg.outputs.name }}.git"
+          git clone "git@github.com:jasongodev/aur-${{ steps.pkg.outputs.name }}.git"
           # git clone "ssh://aur@aur.archlinux.org/${{ steps.pkg.outputs.name }}.git" .
           echo 'user_agent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"' >> .nvchecker.toml
 
