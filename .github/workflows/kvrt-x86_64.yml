@@ -38,7 +38,7 @@ jobs:
           chmod 644 ~/.ssh/known_hosts
 
       - name: Test GitHub Connection
-        run: ssh -T git@github.com || true
+        run: ssh -v -T git@github.com || true
 
       - name: Determine Package Name
         id: pkg
