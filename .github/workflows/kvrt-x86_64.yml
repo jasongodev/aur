@@ -45,7 +45,7 @@ jobs:
 
           Host aur.archlinux.org
             IdentityFile ~/.ssh/aur
-            User aur
+            User jasongodev
           EOF
           chmod 600 ~/.ssh/config
 
