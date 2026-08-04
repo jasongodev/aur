@@ -11,14 +11,13 @@ jobs:
     container:
       image: archlinux:base-devel
     env:
-      TERM: xterm
+      TERM: xterm # Prevents errors when running programs under sudo/su
 
     steps:
       - name: Install dependencies
         run: |
           pacman -Syu --noconfirm devtools git gnupg nvchecker openssh pacman-contrib sudo
 
-      # Fix: Create unprivileged user early and set workspace permissions
       - name: Setup Build User
         run: |
           useradd -m builder
@@ -26,47 +25,7 @@ jobs:
           chown -R builder:builder "$GITHUB_WORKSPACE"
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
-      # Fix: Extract exact package name by stripping `@...` refs properly
-      - name: Determine Package Name
-        id: pkg
-        env:
-          WORKFLOW_REF: ${{ github.workflow_ref }}
-        run: |
-          # Extract filename from path (e.g., .github/workflows/my-pkg.yml@refs/heads/main -> my-pkg.yml@refs/heads/main)
-          RAW_FILE="${WORKFLOW_REF%%@*}"
-          FILENAME="${RAW_FILE##*/}"
-          PKG_NAME="${FILENAME%.*}"
-          
-          echo "name=$PKG_NAME" >> "$GITHUB_OUTPUT"
-          echo "Target AUR Package Name: $PKG_NAME"
-
-      - name: Checkout AUR Repository
-        run: |
-          git clone "https://aur.archlinux.org/${{ steps.pkg.outputs.name }}.git" .
-          echo 'user_agent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"' >> .nvchecker.toml
-
-      - name: Run version upgrade
-        run: |
-          # Grant builder user ownership of workspace
-          chown -R builder:builder .
-          
-          # Run package updates as builder user
-          sudo -u builder pkgctl version upgrade
-          sudo -u builder makepkg --printsrcinfo > .SRCINFO
-
-      - name: Check for changes
-        id: git_check
-        run: |
-          if [[ -n $(git status --porcelain PKGBUILD .SRCINFO) ]]; then
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-            echo "Changes detected in PKGBUILD or .SRCINFO."
-          else
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "No version update found."
-          fi
-
       - name: Configure SSH Keys
-        if: steps.git_check.outputs.changed == 'true'
         env:
           GIT_SSH_PRIVATE_KEY: ${{ secrets.GIT_SSH_PRIVATE_KEY }}
           AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
@@ -89,6 +48,57 @@ jobs:
             User aur
           EOF
           chmod 600 ~/.ssh/config
+
+      - name: Determine Package Name
+        id: pkg
+        env:
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+        run: |
+          # Extract package name from path (e.g., .github/workflows/my-pkg.yml@refs/heads/main -> my-pkg)
+          NO_AT="${WORKFLOW_REF%%@*}" # .github/workflows/my-pkg.yml
+          NO_PATH="${NO_AT##*/}" # my-pkg.yml
+          PKG_NAME="${NO_PATH%.*}" # my-pkg
+          
+          echo "name=$PKG_NAME" >> "$GITHUB_OUTPUT"
+          echo "Target AUR Package Name: $PKG_NAME"
+
+      - name: Checkout AUR Repository
+        run: |
+          git clone "ssh://aur@aur.archlinux.org/${{ steps.pkg.outputs.name }}.git" .
+          echo 'user_agent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"' >> .nvchecker.toml
+
+      - name: Run version upgrade
+        run: |
+          # Grant builder user ownership of workspace
+          chown -R builder:builder .
+          
+          # Run package updates as builder user with up to 5 retries
+          n=0
+          until [ "$n" -ge 5 ]
+          do
+            sudo -u builder pkgctl version upgrade && break
+            n=$((n+1))
+            echo "pkgctl version upgrade failed. Retrying ($n/5)..."
+            sleep 10
+          done
+
+          if [ $n -eq 5 ]; then
+            echo "pkgctl version upgrade failed after 5 attempts."
+            exit 1
+          fi
+
+          sudo -u builder makepkg --printsrcinfo > .SRCINFO
+
+      - name: Check for changes
+        id: git_check
+        run: |
+          if [[ -n $(git status --porcelain PKGBUILD .SRCINFO) ]]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Changes detected in PKGBUILD or .SRCINFO."
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No version update found."
+          fi
 
       - name: Configure GPG Key & Git Identity
         if: steps.git_check.outputs.changed == 'true'
