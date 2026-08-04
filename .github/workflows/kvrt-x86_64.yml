@@ -34,7 +34,8 @@ jobs:
 
           echo "$AUR_SSH_PRIVATE_KEY" > ~/.ssh/aur
           echo "$GIT_SSH_PRIVATE_KEY" > ~/.ssh/git
-          chmod 600 ~/.ssh/{aur,git}
+          chmod 600 ~/.ssh/aur
+          chmod 600 ~/.ssh/git
           
           ssh-keyscan -t rsa,ed25519 github.com aur.archlinux.org >> ~/.ssh/known_hosts 2>/dev/null
           
