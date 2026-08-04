@@ -32,8 +32,10 @@ jobs:
             ${{ secrets.GIT_SSH_PRIVATE_KEY }}
             ${{ secrets.AUR_SSH_PRIVATE_KEY }}
 
-      - name: Add AUR to known_hosts
-        run: ssh-keyscan -H aur.archlinux.org >> ~/.ssh/known_hosts
+      - name: Add known_hosts
+        run: |
+          ssh-keyscan -t rsa,ed25519 github.com aur.archlinux.org >> ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
 
       - name: Test GitHub Connection
         run: ssh -T git@github.com || true
