@@ -10,14 +10,12 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: archlinux:base-devel
+    permissions:
+      contents: write
     env:
       TERM: xterm # Prevents errors when running programs under sudo/su
 
     steps:
-      - name: Install minimal dependencies
-        run: |
-          pacman -Syu --noconfirm devtools nvchecker
-
       - name: Determine Package Name
         id: pkg
         env:
@@ -31,11 +29,19 @@ jobs:
           echo "name=$PKG_NAME" >> "$GITHUB_OUTPUT"
           echo "Target AUR Package Name: $PKG_NAME"
 
+      - name: Install minimal dependencies
+        run: |
+          pacman -Syu --noconfirm devtools nvchecker
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Check upstream for updates
         id: package_status
         run: |
-          curl "https://aur.archlinux.org/cgit/aur.git/plain/PKGBUILD?h=${{ steps.pkg.outputs.name }}" > PKGBUILD
-          curl "https://aur.archlinux.org/cgit/aur.git/plain/.nvchecker.toml?h=${{ steps.pkg.outputs.name }}" > .nvchecker.toml
+          cd "${{ steps.package.outputs.name }}"
 
           n=0
           until [ "$n" -ge 5 ]
@@ -93,17 +99,10 @@ jobs:
           EOF
           chmod 600 /root/.ssh/config
 
-      - name: Checkout AUR Repository
-        if: steps.package_status.outputs.outdated == 'true'
-        run: |
-          git clone "git@github.com:jasongodev/aur-${{ steps.pkg.outputs.name }}.git" .
-          # git clone "ssh://aur@aur.archlinux.org/${{ steps.pkg.outputs.name }}.git" .
-          echo 'user_agent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"' >> .nvchecker.toml
-
       - name: Run version upgrade
         if: steps.package_status.outputs.outdated == 'true'
         run: |
-          # Grant builder user ownership of workspace
+          cd "${{ steps.package.outputs.name }}"
           chown -R builder:builder .
           
           # Run package updates as builder user with up to 5 retries
@@ -153,27 +152,4 @@ jobs:
 
           git add PKGBUILD .SRCINFO
           git commit -m "chore(release): auto-upgrade to version $FULL_VER"
-          
-          # Push to AUR and verify success
-          echo "::group::Pushing to AUR..."
-          if git push origin "$BRANCH" --dry-run; then
-            echo "Successfully pushed update to AUR."
-            echo "::endgroup::"
-          else
-            echo "::error::Failed to push changes to AUR! Aborting GitHub sync."
-            echo "::endgroup::"
-            exit 1
-          fi
-
-          # Push to GitHub mirror only after AUR push succeeds
-          echo "::group::Syncing to GitHub mirror..."
-          git remote add github "git@github.com:jasongodev/aur-${{ steps.pkg.outputs.name }}.git"
-          
-          if git push github "$BRANCH" --dry-run; then
-            echo "Successfully synced changes to GitHub mirror."
-            echo "::endgroup::"
-          else
-            echo "::error::Pushed to AUR successfully, but failed to sync to GitHub mirror."
-            echo "::endgroup::"
-            exit 1
-          fi
+          git push --dry-run
