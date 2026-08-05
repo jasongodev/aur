@@ -79,6 +79,7 @@ jobs:
             return res.content.decode(encoding)
 
           EOF
+          cat nvchecker_source/custom.py
 
       - name: Checkout code
         uses: actions/checkout@v4
