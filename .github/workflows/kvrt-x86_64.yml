@@ -34,8 +34,8 @@ jobs:
       - name: Check upstream for updates
         id: package_status
         run: |
-          wget "https://aur.archlinux.org/cgit/aur.git/plain/PKGBUILD?h=${{ steps.pkg.outputs.name }}"
-          wget "https://aur.archlinux.org/cgit/aur.git/plain/.nvchecker.toml?h=${{ steps.pkg.outputs.name }}"
+          curl "https://aur.archlinux.org/cgit/aur.git/plain/PKGBUILD?h=${{ steps.pkg.outputs.name }}" > PKGBUILD
+          curl "https://aur.archlinux.org/cgit/aur.git/plain/.nvchecker.toml?h=${{ steps.pkg.outputs.name }}" > .nvchecker.toml
 
           n=0
           until [ "$n" -ge 5 ]
