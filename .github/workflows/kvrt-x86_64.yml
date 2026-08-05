@@ -31,7 +31,38 @@ jobs:
 
       - name: Install minimal dependencies
         run: |
-          pacman -Syu --noconfirm devtools nvchecker
+          pacman -Syu --noconfirm devtools nvchecker python uv gcc
+      
+      - name: Install dependencies in Arch Linux with uv
+        run: |
+          uv pip install --system nvchecker curl_cffi
+
+      - name: Overload nvchecker regex source
+        run: |
+          # Create directory for custom nvchecker sources
+          mkdir -p nvchecker_source
+
+          # Overwrite the built-in "regex" source plugin
+          cat << 'EOF' > nvchecker_source/regex.py
+          import re
+          from curl_cffi import requests
+
+          async def get_version(name, conf, **kwargs):
+              url = conf['url']
+              
+              r = requests.get(url, impersonate="chrome120")
+              r.raise_for_status()
+
+              pattern = conf.get('regex')
+              if not pattern:
+                  raise ValueError(f"No 'regex' pattern provided in config for {name}")
+
+              match = re.search(pattern, r.text)
+              if match:
+                  return match.group(1) if match.groups() else match.group(0)
+
+              raise ValueError(f"Regex '{pattern}' did not match any content on {url}")
+          EOF
 
       - name: Checkout code
         uses: actions/checkout@v4
@@ -41,9 +72,10 @@ jobs:
       - name: Check upstream for updates
         id: package_status
         run: |
+          export PYTHONPATH=".:${PYTHONPATH}"
+
           cd "${{ steps.package.outputs.name }}"
-          echo 'user_agent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"' >> .nvchecker.toml
-          
+
           n=0
           until [ "$n" -ge 5 ]
           do
