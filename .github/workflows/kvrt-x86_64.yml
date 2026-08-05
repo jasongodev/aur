@@ -31,12 +31,8 @@ jobs:
 
       - name: Install minimal dependencies
         run: |
-          pacman -Syu --noconfirm devtools nvchecker python uv gcc
+          pacman -Syu --noconfirm devtools nvchecker python python-curl_cffi uv gcc
       
-      - name: Install dependencies in Arch Linux with uv
-        run: |
-          uv pip install --system nvchecker curl_cffi
-
       - name: Overload nvchecker regex source
         run: |
           # Create directory for custom nvchecker sources
