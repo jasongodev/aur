@@ -98,10 +98,10 @@ jobs:
         run: |
           export PYTHONPATH="$GITHUB_WORKSPACE:$PYTHONPATH"
           echo $PYTHONPATH
-          cat "$PYTHONPATH/nvchecker_source/custom.py"
+          cat "$GITHUB_WORKSPACE/nvchecker_source/custom.py"
 
           sudo -u builder echo $PYTHONPATH
-          sudo -u builder cat "$PYTHONPATH/nvchecker_source/custom.py"
+          sudo -u builder cat "$GITHUB_WORKSPACE/nvchecker_source/custom.py"
           cd "${{ steps.package.outputs.name }}"
 
           n=0
