@@ -39,7 +39,7 @@ jobs:
           mkdir -p nvchecker_source
 
           # Overwrite the built-in "regex" source plugin
-          cat << 'EOF' > nvchecker_source/regex-custom.py
+          cat << 'EOF' > "nvchecker_source/regex-custom.py"
           import re
           from curl_cffi.requests import AsyncSession
           from nvchecker.api import GetVersionError
