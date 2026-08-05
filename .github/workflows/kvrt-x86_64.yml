@@ -51,7 +51,7 @@ jobs:
             echo "pkgctl version check failed. Retrying ($n/5)..."
             sleep 10
           done
-
+          echo $STATUS
           if echo "$STATUS" | grep -q '"out_of_date": true'; then
             echo "outdated=true" >> "$GITHUB_OUTPUT"
             echo "Package is outdated."
