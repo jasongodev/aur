@@ -46,13 +46,13 @@ jobs:
           n=0
           until [ "$n" -ge 5 ]
           do
-            STATUS=pkgctl version check --json | jq '.[].out_of_date' && break
+            STATUS=pkgctl version check --json && break
             n=$((n+1))
             echo "pkgctl version check failed. Retrying ($n/5)..."
             sleep 10
           done
 
-          if [ $STATUS = "true" ]; then
+          if [ echo $STATUS | grep '"out_of_date": true' ]; then
             echo "outdated=true" >> "$GITHUB_OUTPUT"
             echo "Package is outdated."
           else
