@@ -1,5 +1,5 @@
 [kvrt-x86_64]
-source = "regex"
+source = "regex-custom"
 url = "https://devbuilds.s.kaspersky-labs.com/devbuilds/kvrt_linux/latest/kvrt.xml"
 regex = '\d+\.\d+\.\d+\.\d+"\s+databases_timestamp\s*=\s*"\d+'
 from_pattern = '(\d+\.\d+\.\d+\.\d+)"\s+databases_timestamp\s*=\s*"(\d+)'
