@@ -46,9 +46,8 @@ jobs:
           n=0
           until [ "$n" -ge 5 ]
           do
-            if STATUS=$(pkgctl version check --json); then
-              break
-            fi
+            STATUS=$(pkgctl version check --json)
+            echo "$STATUS" | grep -q '"status": "success"' && break
             n=$((n+1))
             echo "pkgctl version check failed. Retrying ($n/5)..."
             sleep 10
