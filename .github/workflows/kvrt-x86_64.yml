@@ -32,7 +32,14 @@ jobs:
       - name: Install minimal dependencies
         run: |
           pacman -Syu --noconfirm devtools nvchecker python python-curl_cffi uv gcc
-      
+
+      - name: Setup Build User
+        run: |
+          useradd -m builder
+          echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       - name: Overload nvchecker regex source
         run: |
           # Create directory for custom nvchecker sources
@@ -79,7 +86,7 @@ jobs:
             return res.content.decode(encoding)
 
           EOF
-          cat nvchecker_source/custom.py
+          chown -R builder:builder "$GITHUB_WORKSPACE"
 
       - name: Checkout code
         uses: actions/checkout@v4
@@ -116,14 +123,6 @@ jobs:
         run: |
           pacman -Syu --noconfirm git gnupg openssh
 
-      - name: Setup Build User
-        if: steps.package_status.outputs.outdated == 'true'
-        run: |
-          useradd -m builder
-          echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
-          chown -R builder:builder "$GITHUB_WORKSPACE"
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-
       - name: Configure SSH Keys
         if: steps.package_status.outputs.outdated == 'true'
         env:
@@ -146,7 +145,7 @@ jobs:
       - name: Run version upgrade
         if: steps.package_status.outputs.outdated == 'true'
         run: |
-          export PYTHONPATH="$GITHUB_WORKSPACE.:$PYTHONPATH"
+          export PYTHONPATH="$GITHUB_WORKSPACE:$PYTHONPATH"
 
           cd "${{ steps.package.outputs.name }}"
           chown -R builder:builder .
