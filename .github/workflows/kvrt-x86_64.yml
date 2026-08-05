@@ -87,7 +87,7 @@ jobs:
       - name: Check upstream for updates
         id: package_status
         run: |
-          export PYTHONPATH="$GITHUB_WORKSPACE.:$PYTHONPATH"
+          export PYTHONPATH="$GITHUB_WORKSPACE:$PYTHONPATH"
 
           cd "${{ steps.package.outputs.name }}"
 
@@ -187,7 +187,7 @@ jobs:
         if: steps.package_status.outputs.outdated == 'true'
         run: |
           cd "${{ steps.package.outputs.name }}"
-          
+
           # Detect active branch name (master or main)
           BRANCH=$(git branch --show-current)
           
