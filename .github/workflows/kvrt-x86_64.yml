@@ -14,11 +14,53 @@ jobs:
       TERM: xterm # Prevents errors when running programs under sudo/su
 
     steps:
-      - name: Install dependencies
+      - name: Install minimal dependencies
         run: |
-          pacman -Syu --noconfirm devtools git gnupg nvchecker openssh pacman-contrib sudo
+          pacman -Syu --noconfirm devtools nvchecker
+
+      - name: Determine Package Name
+        id: pkg
+        env:
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+        run: |
+          # Extract package name from path (e.g., .github/workflows/my-pkg.yml@refs/heads/main -> my-pkg)
+          NO_AT="${WORKFLOW_REF%%@*}" # .github/workflows/my-pkg.yml
+          NO_PATH="${NO_AT##*/}" # my-pkg.yml
+          PKG_NAME="${NO_PATH%.*}" # my-pkg
+          
+          echo "name=$PKG_NAME" >> "$GITHUB_OUTPUT"
+          echo "Target AUR Package Name: $PKG_NAME"
+
+      - name: Check upstream for updates
+        id: package_status
+        run: |
+          wget "https://aur.archlinux.org/cgit/aur.git/plain/PKGBUILD?h=${{ steps.pkg.outputs.name }}"
+          wget "https://aur.archlinux.org/cgit/aur.git/plain/.nvchecker.toml?h=${{ steps.pkg.outputs.name }}"
+
+          n=0
+          until [ "$n" -ge 5 ]
+          do
+            STATUS=pkgctl version check --json | jq '.[].out_of_date' && break
+            n=$((n+1))
+            echo "pkgctl version check failed. Retrying ($n/5)..."
+            sleep 10
+          done
+
+          if [ $STATUS = "true" ]; then
+            echo "outdated=true" >> "$GITHUB_OUTPUT"
+            echo "Package is outdated."
+          else
+            echo "outdated=false" >> "$GITHUB_OUTPUT"
+            echo "Package is latest."
+          fi
+
+      - name: Install build dependencies
+        if: steps.package_status.outputs.outdated == 'true'
+        run: |
+          pacman -Syu --noconfirm git gnupg openssh
 
       - name: Setup Build User
+        if: steps.package_status.outputs.outdated == 'true'
         run: |
           useradd -m builder
           echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
@@ -26,6 +68,7 @@ jobs:
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Configure SSH Keys
+        if: steps.package_status.outputs.outdated == 'true'
         env:
           AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
           GIT_SSH_PRIVATE_KEY: ${{ secrets.GIT_SSH_PRIVATE_KEY }}
@@ -50,26 +93,15 @@ jobs:
           EOF
           chmod 600 /root/.ssh/config
 
-      - name: Determine Package Name
-        id: pkg
-        env:
-          WORKFLOW_REF: ${{ github.workflow_ref }}
-        run: |
-          # Extract package name from path (e.g., .github/workflows/my-pkg.yml@refs/heads/main -> my-pkg)
-          NO_AT="${WORKFLOW_REF%%@*}" # .github/workflows/my-pkg.yml
-          NO_PATH="${NO_AT##*/}" # my-pkg.yml
-          PKG_NAME="${NO_PATH%.*}" # my-pkg
-          
-          echo "name=$PKG_NAME" >> "$GITHUB_OUTPUT"
-          echo "Target AUR Package Name: $PKG_NAME"
-
       - name: Checkout AUR Repository
+        if: steps.package_status.outputs.outdated == 'true'
         run: |
           git clone "git@github.com:jasongodev/aur-${{ steps.pkg.outputs.name }}.git" .
           # git clone "ssh://aur@aur.archlinux.org/${{ steps.pkg.outputs.name }}.git" .
           echo 'user_agent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"' >> .nvchecker.toml
 
       - name: Run version upgrade
+        if: steps.package_status.outputs.outdated == 'true'
         run: |
           # Grant builder user ownership of workspace
           chown -R builder:builder .
@@ -78,7 +110,7 @@ jobs:
           n=0
           until [ "$n" -ge 5 ]
           do
-            sudo -u builder pkgctl version upgrade && break
+            sudo -u builder pkgctl version upgrade >/dev/null && break
             n=$((n+1))
             echo "pkgctl version upgrade failed. Retrying ($n/5)..."
             sleep 10
@@ -91,19 +123,8 @@ jobs:
 
           sudo -u builder makepkg --printsrcinfo > .SRCINFO
 
-      - name: Check for changes
-        id: git_check
-        run: |
-          if [[ -n $(git status --porcelain PKGBUILD .SRCINFO) ]]; then
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-            echo "Changes detected in PKGBUILD or .SRCINFO."
-          else
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "No version update found."
-          fi
-
       - name: Configure GPG Key & Git Identity
-        if: steps.git_check.outputs.changed == 'true'
+        if: steps.package_status.outputs.outdated == 'true'
         env:
           GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
           GIT_USER_NAME: ${{ secrets.GIT_USER_NAME }}
@@ -120,7 +141,7 @@ jobs:
           git config --global gpg.program gpg
 
       - name: Commit, Push to AUR & Sync to GitHub
-        if: steps.git_check.outputs.changed == 'true'
+        if: steps.package_status.outputs.outdated == 'true'
         run: |
           # Detect active branch name (master or main)
           BRANCH=$(git branch --show-current)
