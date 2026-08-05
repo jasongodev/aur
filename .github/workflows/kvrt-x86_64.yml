@@ -40,6 +40,11 @@ jobs:
           chown -R builder:builder "$GITHUB_WORKSPACE"
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Overload nvchecker regex source
         run: |
           # Create directory for custom nvchecker sources
@@ -86,12 +91,6 @@ jobs:
             return res.content.decode(encoding)
 
           EOF
-          chown -R builder:builder "$GITHUB_WORKSPACE"
-
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Check upstream for updates
         id: package_status
@@ -107,7 +106,7 @@ jobs:
           n=0
           until [ "$n" -ge 5 ]
           do
-            STATUS=$(sudo -u builder pkgctl version check --json)
+            STATUS=$(pkgctl version check --json)
             echo "$STATUS" | grep -q '"status": "success"' && break
             n=$((n+1))
             echo "pkgctl version check failed. Retrying ($n/5)..."
