@@ -164,7 +164,7 @@ jobs:
             exit 1
           fi
 
-          makepkg --printsrcinfo > .SRCINFO
+          sudo -u builder makepkg --printsrcinfo > .SRCINFO
 
       - name: Configure GPG Key & Git Identity
         if: steps.package_status.outputs.outdated == 'true'
