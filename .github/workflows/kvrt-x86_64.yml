@@ -29,16 +29,9 @@ jobs:
           echo "name=$PKG_NAME" >> "$GITHUB_OUTPUT"
           echo "Target AUR Package Name: $PKG_NAME"
 
-      - name: Install minimal dependencies
+      - name: Install build dependencies
         run: |
-          pacman -Syu --noconfirm devtools nvchecker python python-curl_cffi uv gcc
-
-      - name: Setup Build User
-        run: |
-          useradd -m builder
-          echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
-          chown -R builder:builder "$GITHUB_WORKSPACE"
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          pacman -Syu --noconfirm devtools git gnupg nvchecker python python-curl_cffi uv
 
       - name: Checkout code
         uses: actions/checkout@v4
@@ -117,29 +110,13 @@ jobs:
             echo "Package is latest."
           fi
 
-      - name: Install build dependencies
+      - name: Setup Build User for makepkg
         if: steps.package_status.outputs.outdated == 'true'
         run: |
-          pacman -Syu --noconfirm git gnupg openssh
-
-      - name: Configure SSH Keys
-        if: steps.package_status.outputs.outdated == 'true'
-        env:
-          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
-        run: |
-          mkdir -p /root/.ssh
-
-          echo "$AUR_SSH_PRIVATE_KEY" > /root/.ssh/aur
-          chmod 600 /root/.ssh/aur
-          
-          ssh-keyscan -t rsa,ed25519 aur.archlinux.org >> /root/.ssh/known_hosts 2>/dev/null
-          
-          cat << 'EOF' > /root/.ssh/config
-          Host aur.archlinux.org
-            IdentityFile /root/.ssh/aur
-            User aur
-          EOF
-          chmod 600 /root/.ssh/config
+          useradd -m builder
+          echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+          # chown -R builder:builder "$GITHUB_WORKSPACE"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Run version upgrade
         if: steps.package_status.outputs.outdated == 'true'
@@ -147,7 +124,7 @@ jobs:
           export PYTHONPATH="$GITHUB_WORKSPACE:$PYTHONPATH"
 
           cd "${{ steps.package.outputs.name }}"
-          chown -R builder:builder .
+          
           
           # Run package updates as builder user with up to 5 retries
           n=0
@@ -163,7 +140,8 @@ jobs:
             echo "pkgctl version upgrade failed after 5 attempts."
             exit 1
           fi
-
+          
+          # chown -R builder:builder .
           sudo -u builder makepkg --printsrcinfo > .SRCINFO
 
       - name: Configure GPG Key & Git Identity
@@ -183,7 +161,7 @@ jobs:
           git config --global commit.gpgsign true
           git config --global gpg.program gpg
 
-      - name: Commit, Push to AUR & Sync to GitHub
+      - name: Push to GitHub
         if: steps.package_status.outputs.outdated == 'true'
         run: |
           cd "${{ steps.package.outputs.name }}"
