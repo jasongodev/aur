@@ -141,7 +141,7 @@ jobs:
             exit 1
           fi
           
-          # chown -R builder:builder .
+          chown -R builder:builder .
           sudo -u builder makepkg --printsrcinfo > .SRCINFO
 
       - name: Configure GPG Key & Git Identity
