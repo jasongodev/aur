@@ -19,12 +19,11 @@ jobs:
       - name: Determine Package Name
         id: package
         env:
-          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}  # .github/workflows/my-pkg.yml@refs/heads/main
         run: |
-          # Extract package name from path (e.g., .github/workflows/my-pkg.yml@refs/heads/main -> my-pkg)
-          NO_AT="${WORKFLOW_REF%%@*}" # .github/workflows/my-pkg.yml
-          NO_PATH="${NO_AT##*/}" # my-pkg.yml
-          PKG_NAME="${NO_PATH%.*}" # my-pkg
+          NO_AT="${WORKFLOW_REF%%@*}"               # .github/workflows/my-pkg.yml
+          NO_PATH="${NO_AT##*/}"                    # my-pkg.yml
+          PKG_NAME="${NO_PATH%.*}"                  # my-pkg
           
           echo "name=$PKG_NAME" >> "$GITHUB_OUTPUT"
           echo "Target AUR Package Name: $PKG_NAME"
@@ -44,7 +43,7 @@ jobs:
           mkdir -p nvchecker_source
 
           # Overwrite the built-in "regex" source plugin
-          cat << 'EOF' > nvchecker_source/custom.py
+          cat << 'EOF' > nvchecker_source/regex-impersonate.py
           import re
           from curl_cffi.requests import AsyncSession
           from nvchecker.api import GetVersionError
@@ -85,6 +84,8 @@ jobs:
 
           EOF
 
+          sed -i 's/source = "regex"/source = "regex-impersonate"/' "${{ steps.package.outputs.name }}/.nvchecker.toml"
+
       - name: Check upstream for updates
         id: package_status
         run: |
@@ -124,7 +125,6 @@ jobs:
           export PYTHONPATH="$GITHUB_WORKSPACE:$PYTHONPATH"
 
           cd "${{ steps.package.outputs.name }}"
-          
           
           # Run package updates as builder user with up to 5 retries
           n=0
