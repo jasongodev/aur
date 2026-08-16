@@ -30,7 +30,7 @@ jobs:
 
       - name: Install build dependencies
         run: |
-          pacman -Syu --noconfirm devtools git gnupg nvchecker python python-curl_cffi uv
+          pacman -Syu --noconfirm devtools git gnupg nvchecker python-curl_cffi
 
       - name: Checkout code
         uses: actions/checkout@v4
@@ -42,7 +42,6 @@ jobs:
           # Create directory for custom nvchecker sources
           mkdir -p nvchecker_source
 
-          # Overwrite the built-in "regex" source plugin
           cat << 'EOF' > nvchecker_source/regex-impersonate.py
           import re
           from curl_cffi.requests import AsyncSession
@@ -97,12 +96,13 @@ jobs:
           until [ "$n" -ge 5 ]
           do
             STATUS=$(pkgctl version check --json)
+            echo $STATUS
             echo "$STATUS" | grep -q '"status": "success"' && break
             n=$((n+1))
             echo "pkgctl version check failed. Retrying ($n/5)..."
             sleep 10
           done
-          echo $STATUS
+          
           if echo "$STATUS" | grep -q '"out_of_date": true'; then
             echo "outdated=true" >> "$GITHUB_OUTPUT"
             echo "Package is outdated."
@@ -116,7 +116,7 @@ jobs:
         run: |
           useradd -m builder
           echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
-          # chown -R builder:builder "$GITHUB_WORKSPACE"
+          chown -R builder:builder "$GITHUB_WORKSPACE"
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Run version upgrade
@@ -141,7 +141,6 @@ jobs:
             exit 1
           fi
           
-          chown -R builder:builder .
           sudo -u builder makepkg --printsrcinfo > .SRCINFO
 
       - name: Configure GPG Key & Git Identity
